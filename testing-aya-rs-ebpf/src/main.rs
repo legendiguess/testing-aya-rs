@@ -3,7 +3,7 @@
 
 use aya_bpf::{
     helpers::{bpf_get_current_pid_tgid, bpf_probe_read_kernel, bpf_get_current_uid_gid}, macros::{kprobe, kretprobe, map}, programs::ProbeContext,
-    maps::PerfEventArray,
+    maps::{Array, PerfEventArray},
 };
 use aya_log_ebpf::info;
 
@@ -11,6 +11,9 @@ use testing_aya_rs_common::TcpInfo;
 
 #[map]
 pub static DATA: PerfEventArray<TcpInfo> = PerfEventArray::new(0);
+
+#[map]
+pub static ARGS: Array<u32> = Array::with_max_entries(2, 0);
 
 #[kprobe(name = "kprobetcpv4")]
 pub fn kprobe_tcp_v4(ctx: ProbeContext) -> u32 {
@@ -22,6 +25,9 @@ pub fn kprobe_tcp_v4(ctx: ProbeContext) -> u32 {
     DATA.output(&ctx, &TcpInfo { pid: pid, tid: tid, uid: uid}, 0);
 
     info!(&ctx, "connecting tcpv4");
+    if let Some(result) = ARGS.get(0) {
+        info!(&ctx, "{}", result);
+    }
     0
 }
 

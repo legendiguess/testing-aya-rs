@@ -12,6 +12,7 @@ use aya::{
 };
 use std::{mem, ptr};
 use bytes::BytesMut;
+use aya::{maps::Array};
 
 #[derive(Debug, Parser)]
 struct Opt {}
@@ -40,10 +41,13 @@ async fn main() -> Result<(), anyhow::Error> {
         warn!("failed to initialize eBPF logger: {}", e);
     }
 
-
     let kprobetcpv4_program: &mut KProbe = bpf.program_mut("kprobetcpv4").unwrap().try_into()?;
     kprobetcpv4_program.load()?;
     kprobetcpv4_program.attach("tcp_v4_connect", 0)?;
+
+
+    let mut args = Array::try_from(bpf.map_mut("ARGS")?)?;
+    args.set(0, 15, 0).unwrap();
 
     let kretprobetcpv4_program: &mut KProbe = bpf.program_mut("kretprobetcpv4").unwrap().try_into()?;
     kretprobetcpv4_program.load()?;
