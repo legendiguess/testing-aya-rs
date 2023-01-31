@@ -7,13 +7,21 @@ use aya_bpf::{
 };
 use aya_log_ebpf::info;
 
+// #[allow(non_upper_case_globals)]
+// #[allow(non_snake_case)]
+// #[allow(non_camel_case_types)]
+// #[allow(dead_code)]
+// mod binding;
+
 #[allow(non_upper_case_globals)]
 #[allow(non_snake_case)]
 #[allow(non_camel_case_types)]
 #[allow(dead_code)]
-mod binding;
+mod bindings;
 
-use binding::{sock, sock_common};
+use bindings::{sock, sock_common};
+
+// use binding::aya_bpf//{sock, sock_common};
 
 use testing_aya_rs_common::{TcpInfo, Filter};
 
