@@ -1,22 +1,24 @@
 use anyhow::Context;
+use aya::maps::Array;
 use aya::programs::KProbe;
-use aya::{include_bytes_aligned, Bpf};
+use aya::{include_bytes_aligned, Bpf, BpfLoader, Btf};
+use aya::{maps::perf::AsyncPerfEventArray, util::online_cpus};
 use aya_log::BpfLogger;
+use bytes::BytesMut;
 use clap::Parser;
 use log::{info, warn};
-use tokio::signal;
-use testing_aya_rs_common::TcpInfo;
-use aya::{
-    maps::perf::AsyncPerfEventArray,
-    util::online_cpus,
-};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::{mem, ptr};
-use bytes::BytesMut;
-use aya::{maps::Array};
+use testing_aya_rs_common::{Filter, TcpInfo};
+use tokio::signal;
 
 #[derive(Debug, Parser)]
-struct Opt {}
-
+struct Opt {
+    #[clap(short, long)]
+    daddr: Option<String>,
+    #[clap(short, long)]
+    pid: Option<String>,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -24,16 +26,28 @@ async fn main() -> Result<(), anyhow::Error> {
 
     env_logger::init();
 
-    // This will include your eBPF object file as raw bytes at compile-time and load it at
-    // runtime. This approach is recommended for most real-world use cases. If you would
-    // like to specify the eBPF program at runtime rather than at compile-time, you can
-    // reach for `Bpf::load_file` instead.
+    let mut bpf = BpfLoader::new();
+    // let mut bpf = bpf.btf(Btf::from_sys_fs().ok().as_ref()); todo
+
+    let filter_pid = opt.pid.map(|string| string.parse::<u32>().unwrap());
+
+    let filter_daddr = opt
+        .daddr
+        .map(|string| u32::from_be_bytes(string.parse::<Ipv4Addr>().unwrap().octets()));
+
+    let filter = Filter {
+        pid: filter_pid,
+        daddr: filter_daddr,
+    };
+
+    let mut bpf = bpf.set_global("FILTER", &filter);
+
     #[cfg(debug_assertions)]
-    let mut bpf = Bpf::load(include_bytes_aligned!(
+    let mut bpf = bpf.load(include_bytes_aligned!(
         "../../target/bpfel-unknown-none/debug/testing-aya-rs"
     ))?;
     #[cfg(not(debug_assertions))]
-    let mut bpf = Bpf::load(include_bytes_aligned!(
+    let mut bpf = bpf.load(include_bytes_aligned!(
         "../../target/bpfel-unknown-none/release/testing-aya-rs"
     ))?;
     if let Err(e) = BpfLogger::init(&mut bpf) {
@@ -45,14 +59,10 @@ async fn main() -> Result<(), anyhow::Error> {
     kprobetcpv4_program.load()?;
     kprobetcpv4_program.attach("tcp_v4_connect", 0)?;
 
-
-    let mut args = Array::try_from(bpf.map_mut("ARGS")?)?;
-    args.set(0, 15, 0).unwrap();
-
-    let kretprobetcpv4_program: &mut KProbe = bpf.program_mut("kretprobetcpv4").unwrap().try_into()?;
+    let kretprobetcpv4_program: &mut KProbe =
+        bpf.program_mut("kretprobetcpv4").unwrap().try_into()?;
     kretprobetcpv4_program.load()?;
     kretprobetcpv4_program.attach("tcp_v4_connect", 0)?;
-
 
     let cpus = online_cpus()?;
     let num_cpus = cpus.len();
@@ -74,12 +84,17 @@ async fn main() -> Result<(), anyhow::Error> {
                     // let pkt_buf = buf.split().freeze().slice(
                     //     mem::size_of::<TcpInfo>()..mem::size_of::<TcpInfo>(),
                     // );
-                    info!("received TcpInfo: pid: {:?}, tid: {:?}, uid: {:?}", tcp_info.pid, tcp_info.tid, tcp_info.uid);
+                    info!(
+                        "received TcpInfo: pid: {:?}, tgid: {:?}, uid: {:?}, daddr: {:?}",
+                        tcp_info.pid,
+                        tcp_info.tgid,
+                        tcp_info.uid,
+                        Ipv4Addr::from(tcp_info.daddr)
+                    );
                 }
             }
         });
     }
-
 
     info!("Waiting for Ctrl-C...");
     signal::ctrl_c().await?;
