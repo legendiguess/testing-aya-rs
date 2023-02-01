@@ -6,7 +6,9 @@ pub struct TcpInfo {
     pub pid: u32,
     pub tgid: u32,
     pub uid: u32,
-    pub daddr: u32
+    pub daddr: u32,
+    pub padding: u16,
+    pub port: u16
 }
 
 #[derive(Debug, Copy, Clone)]
