@@ -79,6 +79,8 @@ pub fn kretprobe_tcp_v4(ctx: ProbeContext) -> u32 {
     let port: u16 = u16::from_be(unsafe {
         sk_common.__bindgen_anon_3.__bindgen_anon_1.skc_dport
     });
+
+    CURRENT_SOCKETS.remove(&pid).unwrap();
     
 
     let filter = unsafe { core::ptr::read_volatile(&FILTER) };
